@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Health centres - HealthHarbor</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="nav"></aside>
+
+  <main class="main">
+    <header class="page-head">
+      <div>
+        <h1>Health centres</h1>
+        <p>Rural health centres with their facilities, opening hours and healthcare workers.</p>
+      </div>
+      <div class="head-actions">
+        <button class="btn primary" onclick="addCentre()">Add health centre</button>
+      </div>
+    </header>
+
+    <div class="cards" id="cards"></div>
+  </main>
+</div>
+
+<!-- add / edit centre -->
+<dialog id="centreDlg">
+  <form id="centreForm" onsubmit="saveCentre(event)">
+    <div class="dlg-head">
+      <h3 id="centreTitle">Add health centre</h3>
+      <button type="button" class="dlg-close" onclick="closeDlg('centreDlg')" aria-label="Close">&times;</button>
+    </div>
+    <div class="dlg-body">
+      <input type="hidden" name="id">
+      <div class="form-grid">
+        <div class="full">
+          <label for="c_name">Centre name</label>
+          <input id="c_name" name="name" required>
+        </div>
+        <div>
+          <label for="c_village">Village</label>
+          <input id="c_village" name="village">
+        </div>
+        <div>
+          <label for="c_days">Working days</label>
+          <input id="c_days" name="workingDays" placeholder="Mon-Sat">
+        </div>
+        <div>
+          <label for="c_open">Opens at</label>
+          <input id="c_open" name="openTime" type="time">
+        </div>
+        <div>
+          <label for="c_close">Closes at</label>
+          <input id="c_close" name="closeTime" type="time">
+        </div>
+        <div class="full">
+          <label for="c_fac">Facilities and services</label>
+          <textarea id="c_fac" name="facilities" placeholder="OPD, Pharmacy, Vaccination, Lab"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn" onclick="closeDlg('centreDlg')">Cancel</button>
+      <button type="submit" class="btn primary">Save centre</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- staff of one centre -->
+<dialog id="staffDlg">
+  <div class="dlg-head">
+    <h3 id="staffTitle">Staff</h3>
+    <button type="button" class="dlg-close" onclick="closeDlg('staffDlg')" aria-label="Close">&times;</button>
+  </div>
+  <div class="dlg-body">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Role</th><th>Phone</th></tr></thead>
+        <tbody id="staffRows"></tbody>
+      </table>
+    </div>
+
+    <form class="inline-form" id="staffForm" onsubmit="saveWorker(event)">
+      <h4>Add a worker</h4>
+      <div class="form-grid">
+        <div>
+          <label for="w_name">Name</label>
+          <input id="w_name" name="name" required>
+        </div>
+        <div>
+          <label for="w_role">Role</label>
+          <select id="w_role" name="role">
+            <option>Doctor</option>
+            <option>Nurse</option>
+            <option>ANM</option>
+            <option>ASHA worker</option>
+            <option>Pharmacist</option>
+            <option>Lab technician</option>
+            <option>Sanitary inspector</option>
+          </select>
+        </div>
+        <div class="full">
+          <label for="w_phone">Phone</label>
+          <input id="w_phone" name="phone" inputmode="tel">
+        </div>
+      </div>
+      <p><button class="btn primary" type="submit">Add worker</button></p>
+    </form>
+  </div>
+</dialog>
+
+<script src="js/api.js"></script>
+<script>
+renderNav("centres");
+
+let centres = [];
+let staffCount = {};
+let current = null;
+
+const cards = document.getElementById("cards");
+const form = document.getElementById("centreForm");
+
+async function load() {
+  try {
+    centres = await http.get(API.centre + "/centres");
+  } catch (e) {
+    cards.innerHTML = '<div class="empty">' + esc(e.message) + "</div>";
+    return;
+  }
+  render();
+  // number of workers at each centre
+  const results = await Promise.allSettled(centres.map((c) => http.get(API.centre + "/centres/" + c.id + "/workers")));
+  centres.forEach((c, i) => {
+    if (results[i].status === "fulfilled") staffCount[c.id] = results[i].value.length;
+  });
+  render();
+}
+
+function render() {
+  if (!centres.length) {
+    cards.innerHTML = '<div class="empty">No health centres yet. Add the first one.</div>';
+    return;
+  }
+  cards.innerHTML = centres.map((c) =>
+    '<article class="centre">' +
+      "<h3>" + esc(c.name) + "</h3>" +
+      '<div class="where">' + esc(c.village || "") + "</div>" +
+      "<dl>" +
+        "<dt>Services</dt><dd>" + esc(c.facilities || "-") + "</dd>" +
+        "<dt>Hours</dt><dd>" + (c.openTime ? fmtTime(c.openTime) + " to " + fmtTime(c.closeTime) : "-") + "</dd>" +
+        "<dt>Days</dt><dd>" + esc(c.workingDays || "-") + "</dd>" +
+        "<dt>Staff</dt><dd>" + (staffCount[c.id] == null ? "-" : staffCount[c.id]) + "</dd>" +
+      "</dl>" +
+      '<div class="actions">' +
+        '<button class="btn sm" onclick="showStaff(' + c.id + ')">Staff</button>' +
+        '<button class="btn sm" onclick="editCentre(' + c.id + ')">Edit</button>' +
+      "</div>" +
+    "</article>"
+  ).join("");
+}
+
+function addCentre() {
+  form.reset();
+  form.elements.id.value = "";
+  document.getElementById("centreTitle").textContent = "Add health centre";
+  openDlg("centreDlg");
+}
+
+function editCentre(id) {
+  const c = centres.find((x) => x.id === id);
+  form.reset();
+  form.elements.id.value = c.id;
+  form.elements.name.value = c.name || "";
+  form.elements.village.value = c.village || "";
+  form.elements.workingDays.value = c.workingDays || "";
+  form.elements.openTime.value = c.openTime ? fmtTime(c.openTime) : "";
+  form.elements.closeTime.value = c.closeTime ? fmtTime(c.closeTime) : "";
+  form.elements.facilities.value = c.facilities || "";
+  document.getElementById("centreTitle").textContent = "Edit health centre";
+  openDlg("centreDlg");
+}
+
+async function saveCentre(e) {
+  e.preventDefault();
+  const data = formData(form);
+  const id = data.id;
+  delete data.id;
+  try {
+    if (id) await http.put(API.centre + "/centres/" + id, data);
+    else await http.post(API.centre + "/centres", data);
+    closeDlg("centreDlg");
+    toast("Health centre saved.");
+    load();
+  } catch (err) { showError(err); }
+}
+
+// ----- staff -----
+
+async function showStaff(id) {
+  current = centres.find((x) => x.id === id);
+  document.getElementById("staffTitle").textContent = "Staff at " + current.name;
+  document.getElementById("staffForm").reset();
+  await loadStaff();
+  openDlg("staffDlg");
+}
+
+async function loadStaff() {
+  const body = document.getElementById("staffRows");
+  try {
+    const workers = await http.get(API.centre + "/centres/" + current.id + "/workers");
+    staffCount[current.id] = workers.length;
+    if (!workers.length) {
+      body.innerHTML = '<tr><td colspan="3" class="empty">No staff added yet.</td></tr>';
+      return;
+    }
+    body.innerHTML = workers.map((w) =>
+      "<tr><td><strong>" + esc(w.name) + "</strong></td><td>" + esc(w.role) + "</td><td>" + esc(w.phone) + "</td></tr>"
+    ).join("");
+  } catch (err) {
+    body.innerHTML = '<tr><td colspan="3" class="empty">' + esc(err.message) + "</td></tr>";
+  }
+}
+
+async function saveWorker(e) {
+  e.preventDefault();
+  try {
+    await http.post(API.centre + "/centres/" + current.id + "/workers", formData(e.target));
+    toast("Worker added.");
+    e.target.reset();
+    await loadStaff();
+    render();
+  } catch (err) { showError(err); }
+}
+
+load();
+</script>
+</body>
+</html>

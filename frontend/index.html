@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard - HealthHarbor</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="nav"></aside>
+
+  <main class="main">
+    <header class="page-head">
+      <div>
+        <h1>Community health dashboard</h1>
+        <p>Everything that needs an officer's attention, gathered from the five services into one view.</p>
+      </div>
+      <div class="head-actions">
+        <button class="btn" onclick="loadAll()">Refresh</button>
+      </div>
+    </header>
+
+    <div class="services" id="services"></div>
+
+    <section class="summary" id="summary"></section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Pending actions</h2>
+        <span class="hint" id="pendingCount"></span>
+      </div>
+      <ul class="board" id="board"></ul>
+    </section>
+
+    <section class="panel" id="reportPanel">
+      <div class="panel-head">
+        <h2>Report an issue</h2>
+        <span class="hint">Each report goes straight to the service that handles it.</span>
+      </div>
+      <div class="panel-body">
+        <div class="two">
+          <form id="complaintForm" onsubmit="reportComplaint(event)">
+            <h3>Sanitation problem</h3>
+            <div class="form-grid">
+              <div class="full">
+                <label for="c_facility">Facility</label>
+                <select id="c_facility" name="facilityId" required></select>
+              </div>
+              <div class="full">
+                <label for="c_desc">What is wrong?</label>
+                <textarea id="c_desc" name="description" required placeholder="For example: door broken and water leaking"></textarea>
+              </div>
+              <div>
+                <label for="c_priority">Priority</label>
+                <select id="c_priority" name="priority">
+                  <option value="HIGH">High</option>
+                  <option value="MEDIUM" selected>Medium</option>
+                  <option value="LOW">Low</option>
+                </select>
+              </div>
+              <div>
+                <label for="c_by">Reported by</label>
+                <input id="c_by" name="reportedBy" placeholder="Your name">
+              </div>
+            </div>
+            <p><button class="btn primary" type="submit">Send to sanitation</button></p>
+          </form>
+
+          <form id="refillForm" onsubmit="requestRefill(event)">
+            <h3>Medicine running low</h3>
+            <div class="form-grid">
+              <div class="full">
+                <label for="r_med">Medicine and health centre</label>
+                <select id="r_med" name="medicineId" required></select>
+              </div>
+              <div>
+                <label for="r_qty">Quantity needed</label>
+                <input id="r_qty" name="quantityNeeded" type="number" min="1" required>
+              </div>
+              <div>
+                <label for="r_by">Requested by</label>
+                <input id="r_by" name="requestedBy" placeholder="Your name">
+              </div>
+            </div>
+            <p><button class="btn primary" type="submit">Request refill</button></p>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+renderNav("index");
+
+// roles that can neither report a sanitation problem nor request a refill do not need this panel
+if (!can("sanitation.report") && !can("medicines.request")) {
+  document.getElementById("reportPanel").style.display = "none";
+}
+
+const SERVICE_LIST = [
+  { label: "Residents", key: "resident" },
+  { label: "Health centres", key: "centre" },
+  { label: "Medicines", key: "inventory" },
+  { label: "Camps", key: "camp" },
+  { label: "Sanitation", key: "sanitation" },
+];
+
+let centreNames = {};
+
+function centreName(id) {
+  return centreNames[id] || ("centre " + id);
+}
+
+function rankOf(priority) {
+  return { HIGH: 0, MEDIUM: 1, LOW: 2 }[String(priority).toUpperCase()] ?? 3;
+}
+
+function show(n) {
+  return n == null ? "-" : n;
+}
+
+async function loadAll() {
+  // Ask all five services at the same time. A service that is switched off just gives null.
+  const calls = {
+    residents: http.get(API.resident + "/residents/count"),
+    appointments: http.get(API.centre + "/appointments?status=SCHEDULED"),
+    centres: http.get(API.centre + "/centres"),
+    lowStock: http.get(API.inventory + "/medicines/low-stock"),
+    refills: http.get(API.inventory + "/replenishments?status=PENDING"),
+    camps: http.get(API.camp + "/camps?status=PLANNED"),
+    followUps: http.get(API.camp + "/followups/pending"),
+    complaints: http.get(API.sanitation + "/complaints?status=OPEN"),
+    water: http.get(API.sanitation + "/water?pending=true"),
+  };
+  const names = Object.keys(calls);
+  const results = await Promise.allSettled(Object.values(calls));
+  const d = {};
+  names.forEach((name, i) => {
+    d[name] = results[i].status === "fulfilled" ? results[i].value : null;
+  });
+
+  centreNames = {};
+  (d.centres || []).forEach((c) => { centreNames[c.id] = c.name; });
+
+  showServices(d);
+  showSummary(d);
+  showBoard(d);
+}
+
+function showServices(d) {
+  const online = {
+    resident: d.residents !== null,
+    centre: d.appointments !== null,
+    inventory: d.lowStock !== null,
+    camp: d.camps !== null,
+    sanitation: d.complaints !== null,
+  };
+  document.getElementById("services").innerHTML = SERVICE_LIST.map((s) =>
+    '<span class="' + (online[s.key] ? "on" : "off") + '"><i></i>' + s.label +
+    (online[s.key] ? " service online" : " service offline") + "</span>"
+  ).join("");
+}
+
+function showSummary(d) {
+  const count = (list) => (list == null ? null : list.length);
+  const cells = [
+    { label: "Residents registered", value: d.residents ? d.residents.count : null, alert: false },
+    { label: "Appointments scheduled", value: count(d.appointments), alert: false },
+    { label: "Medicines running low", value: count(d.lowStock), alert: true },
+    { label: "Camps planned", value: count(d.camps), alert: false },
+    { label: "Sanitation problems open", value: count(d.complaints), alert: true },
+    { label: "Water issues to fix", value: count(d.water), alert: true },
+  ];
+  document.getElementById("summary").innerHTML = cells.map((c) =>
+    '<div class="' + (c.alert && c.value > 0 ? "alert" : "") + '"><b>' + show(c.value) + "</b><span>" + c.label + "</span></div>"
+  ).join("");
+}
+
+function showBoard(d) {
+  const items = [];
+
+  (d.complaints || []).forEach((c) => items.push({
+    priority: c.priority,
+    area: "Sanitation",
+    what: c.description,
+    meta: c.facilityName + ", " + c.village + ". Reported " + fmtDate(c.reportedOn) + (c.reportedBy ? " by " + c.reportedBy : ""),
+    status: c.status,
+    link: "sanitation.html",
+  }));
+
+  (d.lowStock || []).forEach((m) => items.push({
+    priority: m.quantity <= m.minLevel / 2 ? "HIGH" : "MEDIUM",
+    area: "Medicines",
+    what: m.name + " is running low",
+    meta: "Only " + m.quantity + " " + (m.unit || "units") + " left at " + centreName(m.centreId) + " (minimum " + m.minLevel + ")",
+    status: "LOW STOCK",
+    link: "medicines.html",
+  }));
+
+  (d.refills || []).forEach((r) => items.push({
+    priority: "MEDIUM",
+    area: "Medicines",
+    what: "Refill requested for " + r.medicineName,
+    meta: r.quantityNeeded + " units asked for on " + fmtDate(r.requestedOn) + (r.requestedBy ? " by " + r.requestedBy : ""),
+    status: r.status,
+    link: "medicines.html",
+  }));
+
+  (d.water || []).forEach((w) => items.push({
+    priority: w.qualityStatus === "UNSAFE" ? "HIGH" : "MEDIUM",
+    area: "Water",
+    what: w.issue || "Water quality needs attention",
+    meta: w.village + ", " + w.source + (w.correctiveAction ? ". Planned action: " + w.correctiveAction : ""),
+    status: w.actionStatus,
+    link: "water.html",
+  }));
+
+  (d.followUps || []).forEach((f) => items.push({
+    priority: "MEDIUM",
+    area: "Health camps",
+    what: "Follow-up needed for " + f.residentName,
+    meta: f.screeningType + " at " + f.campName + (f.followUpDate ? ", due " + fmtDate(f.followUpDate) : "") + (f.result ? ". Result: " + f.result : ""),
+    status: f.followUpStatus,
+    link: "camps.html",
+  }));
+
+  // each role only sees the actions from pages it is allowed to open
+  const visible = items.filter((it) => canOpen(it.link));
+  items.length = 0;
+  visible.forEach((it) => items.push(it));
+
+  items.sort((a, b) => rankOf(a.priority) - rankOf(b.priority));
+
+  document.getElementById("pendingCount").textContent =
+    items.length + (items.length === 1 ? " item" : " items") + ", most urgent first";
+
+  const board = document.getElementById("board");
+  if (!items.length) {
+    board.innerHTML = '<li class="p-low"><div class="what">Nothing is waiting.</div>' +
+      '<div class="meta">The services that are online have no pending actions. Anything reported below will appear here.</div></li>';
+    return;
+  }
+  board.innerHTML = items.map((it) =>
+    '<li class="p-' + String(it.priority).toLowerCase() + '">' +
+      '<div class="what">' + esc(it.what) + "</div>" +
+      '<div class="meta"><strong>' + esc(it.area) + ":</strong> " + esc(it.meta) + "</div>" +
+      '<div class="side">' + badge(it.priority) + badge(it.status) +
+        '<a class="btn sm" href="' + it.link + '">Open</a></div>' +
+    "</li>"
+  ).join("");
+}
+
+// ----- quick report forms (the example from the problem statement) -----
+
+async function loadFormOptions() {
+  try {
+    const facilities = await http.get(API.sanitation + "/facilities");
+    fillSelect(document.getElementById("c_facility"), facilities, (f) => f.id,
+      (f) => f.name + " (" + f.village + ")", "Choose a facility");
+  } catch (e) { /* the status chips at the top already show that this service is offline */ }
+
+  try {
+    const centres = await http.get(API.centre + "/centres");
+    centres.forEach((c) => { centreNames[c.id] = c.name; });
+  } catch (e) { /* medicine names will show the centre number instead */ }
+
+  try {
+    const medicines = await http.get(API.inventory + "/medicines");
+    fillSelect(document.getElementById("r_med"), medicines, (m) => m.id,
+      (m) => m.name + " at " + centreName(m.centreId) + " (" + m.quantity + " left)", "Choose a medicine");
+  } catch (e) { /* same as above */ }
+}
+
+async function reportComplaint(e) {
+  e.preventDefault();
+  try {
+    await http.post(API.sanitation + "/complaints", formData(e.target));
+    toast("Recorded and sent to the sanitation service.");
+    e.target.reset();
+    loadAll();
+  } catch (err) { showError(err); }
+}
+
+async function requestRefill(e) {
+  e.preventDefault();
+  try {
+    await http.post(API.inventory + "/replenishments", formData(e.target));
+    toast("Recorded and sent to the medicine inventory service.");
+    e.target.reset();
+    loadAll();
+  } catch (err) { showError(err); }
+}
+
+loadAll();
+loadFormOptions();
+</script>
+</body>
+</html>

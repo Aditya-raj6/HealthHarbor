@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Health camps - HealthHarbor</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="nav"></aside>
+
+  <main class="main">
+    <header class="page-head">
+      <div>
+        <h1>Health camps</h1>
+        <p>Plan camps, add the medical staff, record who was screened, and track follow-ups.</p>
+      </div>
+      <div class="head-actions">
+        <button class="btn primary" onclick="addCamp()">Plan a camp</button>
+      </div>
+    </header>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Camps</h2></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Camp</th><th>Village</th><th>Date</th><th>Health centre</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody id="campRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Follow-ups waiting</h2>
+        <span class="hint">People screened at a camp who still need a follow-up visit</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Person</th><th>Camp</th><th>Screening</th><th>Result</th><th>Due</th><th></th></tr>
+          </thead>
+          <tbody id="followRows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- plan a camp -->
+<dialog id="campDlg">
+  <form id="campForm" onsubmit="saveCamp(event)">
+    <div class="dlg-head">
+      <h3>Plan a camp</h3>
+      <button type="button" class="dlg-close" onclick="closeDlg('campDlg')" aria-label="Close">&times;</button>
+    </div>
+    <div class="dlg-body">
+      <div class="form-grid">
+        <div class="full">
+          <label for="k_name">Camp name</label>
+          <input id="k_name" name="name" required placeholder="Eye check-up camp">
+        </div>
+        <div>
+          <label for="k_village">Village</label>
+          <input id="k_village" name="village">
+        </div>
+        <div>
+          <label for="k_date">Date</label>
+          <input id="k_date" name="campDate" type="date" required>
+        </div>
+        <div class="full">
+          <label for="k_centre">Organised by (health centre)</label>
+          <select id="k_centre" name="centreId"></select>
+        </div>
+        <div class="full">
+          <label for="k_desc">What will happen at the camp</label>
+          <textarea id="k_desc" name="description"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn" onclick="closeDlg('campDlg')">Cancel</button>
+      <button type="submit" class="btn primary">Save camp</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- staff and people screened -->
+<dialog id="detailsDlg" class="wide">
+  <div class="dlg-head">
+    <h3 id="detailsTitle">Camp</h3>
+    <button type="button" class="dlg-close" onclick="closeDlg('detailsDlg')" aria-label="Close">&times;</button>
+  </div>
+  <div class="dlg-body">
+    <h4>Medical staff</h4>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Role</th></tr></thead>
+        <tbody id="staffRows"></tbody>
+      </table>
+    </div>
+    <form class="inline-form" id="staffForm" onsubmit="saveStaff(event)">
+      <div class="form-grid">
+        <div>
+          <label for="s_name">Staff name</label>
+          <input id="s_name" name="staffName" required>
+        </div>
+        <div>
+          <label for="s_role">Role</label>
+          <select id="s_role" name="role">
+            <option>Doctor</option>
+            <option>Nurse</option>
+            <option>ANM</option>
+            <option>ASHA worker</option>
+            <option>Lab technician</option>
+            <option>Volunteer</option>
+          </select>
+        </div>
+      </div>
+      <p><button class="btn" type="submit">Add staff</button></p>
+    </form>
+
+    <h4>People screened</h4>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Person</th><th>Screening</th><th>Result</th><th>Follow-up</th></tr></thead>
+        <tbody id="peopleRows"></tbody>
+      </table>
+    </div>
+    <form class="inline-form" id="personForm" onsubmit="savePerson(event)">
+      <div class="form-grid">
+        <div>
+          <label for="p_resident">Registered resident</label>
+          <select id="p_resident" name="residentId" onchange="pickResident()"></select>
+        </div>
+        <div>
+          <label for="p_name">Name</label>
+          <input id="p_name" name="residentName" required>
+        </div>
+        <div>
+          <label for="p_type">Screening</label>
+          <input id="p_type" name="screeningType" list="screenings" placeholder="Blood pressure">
+          <datalist id="screenings">
+            <option value="Blood pressure"></option>
+            <option value="Blood sugar"></option>
+            <option value="Eye test"></option>
+            <option value="Anaemia"></option>
+            <option value="Dental check"></option>
+            <option value="Child growth check"></option>
+          </datalist>
+        </div>
+        <div>
+          <label for="p_result">Result</label>
+          <input id="p_result" name="result">
+        </div>
+        <div>
+          <label class="check" for="p_follow">
+            <input id="p_follow" name="followUpNeeded" type="checkbox"> Needs a follow-up visit
+          </label>
+        </div>
+        <div>
+          <label for="p_due">Follow-up date</label>
+          <input id="p_due" name="followUpDate" type="date">
+        </div>
+      </div>
+      <p><button class="btn" type="submit">Add person</button></p>
+    </form>
+  </div>
+</dialog>
+
+<script src="js/api.js"></script>
+<script>
+renderNav("camps");
+
+let camps = [];
+let centres = [];
+let residents = [];
+let current = null;
+
+const campForm = document.getElementById("campForm");
+const staffForm = document.getElementById("staffForm");
+const personForm = document.getElementById("personForm");
+
+function centreName(id) {
+  const c = centres.find((x) => x.id === id);
+  return c ? c.name : (id ? "Centre " + id : "-");
+}
+
+async function init() {
+  try { centres = await http.get(API.centre + "/centres"); } catch (e) { showError(e); }
+  try { residents = await http.get(API.resident + "/residents"); } catch (e) { showError(e); }
+  loadCamps();
+  loadFollowUps();
+}
+
+// ----- camps -----
+
+async function loadCamps() {
+  const body = document.getElementById("campRows");
+  try {
+    camps = await http.get(API.camp + "/camps");
+  } catch (e) {
+    body.innerHTML = '<tr><td colspan="6" class="empty">' + esc(e.message) + "</td></tr>";
+    return;
+  }
+  if (!camps.length) {
+    body.innerHTML = '<tr><td colspan="6" class="empty">No camps yet. Plan the first one.</td></tr>';
+    return;
+  }
+  body.innerHTML = camps.map((c) =>
+    "<tr>" +
+      "<td><strong>" + esc(c.name) + "</strong>" + (c.description ? '<span class="sub">' + esc(c.description) + "</span>" : "") + "</td>" +
+      "<td>" + esc(c.village) + "</td>" +
+      "<td>" + fmtDate(c.campDate) + "</td>" +
+      "<td>" + esc(centreName(c.centreId)) + "</td>" +
+      "<td>" + badge(c.status) + "</td>" +
+      '<td><div class="actions">' +
+        '<button class="btn sm" onclick="showCamp(' + c.id + ')">Staff and screening</button>' +
+        (c.status === "PLANNED" ? '<button class="btn sm" onclick="setStatus(' + c.id + ", 'COMPLETED')\">Mark completed</button>" : "") +
+        (c.status === "PLANNED" ? '<button class="btn sm danger" onclick="setStatus(' + c.id + ", 'CANCELLED')\">Cancel</button>" : "") +
+      "</div></td>" +
+    "</tr>"
+  ).join("");
+}
+
+function addCamp() {
+  campForm.reset();
+  fillSelect(document.getElementById("k_centre"), centres, (c) => c.id, (c) => c.name, "Not linked to a centre");
+  openDlg("campDlg");
+}
+
+async function saveCamp(e) {
+  e.preventDefault();
+  try {
+    await http.post(API.camp + "/camps", formData(campForm));
+    closeDlg("campDlg");
+    toast("Camp saved.");
+    loadCamps();
+  } catch (err) { showError(err); }
+}
+
+async function setStatus(id, status) {
+  if (status === "CANCELLED" && !confirm("Cancel this camp?")) return;
+  try {
+    await http.put(API.camp + "/camps/" + id + "/status", { status: status });
+    toast(status === "COMPLETED" ? "Camp marked as completed." : "Camp cancelled.");
+    loadCamps();
+  } catch (err) { showError(err); }
+}
+
+// ----- staff and people screened -----
+
+async function showCamp(id) {
+  current = camps.find((x) => x.id === id);
+  document.getElementById("detailsTitle").textContent = current.name + ", " + fmtDate(current.campDate);
+  staffForm.reset();
+  personForm.reset();
+  fillSelect(document.getElementById("p_resident"), residents, (r) => r.id,
+    (r) => r.name + (r.village ? " (" + r.village + ")" : ""), "Someone not registered");
+  await loadDetails();
+  openDlg("detailsDlg");
+}
+
+async function loadDetails() {
+  const staffBody = document.getElementById("staffRows");
+  const peopleBody = document.getElementById("peopleRows");
+  try {
+    const both = await Promise.all([
+      http.get(API.camp + "/camps/" + current.id + "/staff"),
+      http.get(API.camp + "/camps/" + current.id + "/beneficiaries"),
+    ]);
+    const staff = both[0];
+    const people = both[1];
+
+    staffBody.innerHTML = staff.length
+      ? staff.map((s) => "<tr><td><strong>" + esc(s.staffName) + "</strong></td><td>" + esc(s.role) + "</td></tr>").join("")
+      : '<tr><td colspan="2" class="empty">No staff added yet.</td></tr>';
+
+    peopleBody.innerHTML = people.length
+      ? people.map((p) =>
+          "<tr><td><strong>" + esc(p.residentName) + "</strong></td><td>" + esc(p.screeningType) + "</td><td>" + esc(p.result) + "</td><td>" +
+          (p.followUpNeeded ? badge(p.followUpStatus) + (p.followUpDate ? '<span class="sub">due ' + fmtDate(p.followUpDate) + "</span>" : "") : "Not needed") +
+          "</td></tr>").join("")
+      : '<tr><td colspan="4" class="empty">Nobody screened yet.</td></tr>';
+  } catch (err) { showError(err); }
+}
+
+async function saveStaff(e) {
+  e.preventDefault();
+  try {
+    await http.post(API.camp + "/camps/" + current.id + "/staff", formData(staffForm));
+    toast("Staff added.");
+    staffForm.reset();
+    loadDetails();
+  } catch (err) { showError(err); }
+}
+
+// choosing a registered resident fills in the name
+function pickResident() {
+  const id = document.getElementById("p_resident").value;
+  const r = residents.find((x) => String(x.id) === id);
+  if (r) personForm.elements.residentName.value = r.name;
+}
+
+async function savePerson(e) {
+  e.preventDefault();
+  const data = formData(personForm);
+  data.followUpNeeded = personForm.elements.followUpNeeded.checked;
+  try {
+    await http.post(API.camp + "/camps/" + current.id + "/beneficiaries", data);
+    toast("Person added.");
+    personForm.reset();
+    loadDetails();
+    loadFollowUps();
+  } catch (err) { showError(err); }
+}
+
+// ----- follow-ups -----
+
+async function loadFollowUps() {
+  const body = document.getElementById("followRows");
+  try {
+    const list = await http.get(API.camp + "/followups/pending");
+    if (!list.length) {
+      body.innerHTML = '<tr><td colspan="6" class="empty">No follow-ups are waiting.</td></tr>';
+      return;
+    }
+    body.innerHTML = list.map((f) =>
+      "<tr><td><strong>" + esc(f.residentName) + "</strong></td><td>" + esc(f.campName) + "</td><td>" + esc(f.screeningType) +
+      "</td><td>" + esc(f.result) + "</td><td>" + fmtDate(f.followUpDate) + "</td>" +
+      '<td><button class="btn sm" onclick="followUpDone(' + f.id + ')">Mark done</button></td></tr>'
+    ).join("");
+  } catch (err) {
+    body.innerHTML = '<tr><td colspan="6" class="empty">' + esc(err.message) + "</td></tr>";
+  }
+}
+
+async function followUpDone(id) {
+  try {
+    await http.put(API.camp + "/beneficiaries/" + id + "/followup-done");
+    toast("Follow-up marked as done.");
+    loadFollowUps();
+  } catch (err) { showError(err); }
+}
+
+init();
+</script>
+</body>
+</html>

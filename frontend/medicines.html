@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Medicines and stock - HealthHarbor</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="nav"></aside>
+
+  <main class="main">
+    <header class="page-head">
+      <div>
+        <h1>Medicines and stock</h1>
+        <p>Stock levels at each health centre, medicine given to residents, and refill requests.</p>
+      </div>
+      <div class="head-actions">
+        <button class="btn primary" onclick="addMedicine()">Add item</button>
+      </div>
+    </header>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Stock</h2></div>
+      <div class="panel-body">
+        <div class="toolbar" style="margin-bottom:0">
+          <select id="centreFilter" onchange="renderStock()" aria-label="Filter by health centre"></select>
+          <label class="check" style="margin:0">
+            <input type="checkbox" id="lowOnly" onchange="renderStock()"> Show only items that are running low
+          </label>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Item</th><th>Health centre</th><th>Category</th>
+              <th class="num">In stock</th><th class="num">Minimum</th><th>Expiry</th><th>Status</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="stockRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="two">
+      <section class="panel">
+        <div class="panel-head"><h2>Refill requests</h2></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Item</th><th class="num">Quantity</th><th>Status</th><th></th></tr></thead>
+            <tbody id="refillRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>Recently given out</h2></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Item</th><th class="num">Quantity</th><th>Given to</th></tr></thead>
+            <tbody id="issueRows"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<!-- add / edit item -->
+<dialog id="medDlg">
+  <form id="medForm" onsubmit="saveMedicine(event)">
+    <div class="dlg-head">
+      <h3 id="medTitle">Add item</h3>
+      <button type="button" class="dlg-close" onclick="closeDlg('medDlg')" aria-label="Close">&times;</button>
+    </div>
+    <div class="dlg-body">
+      <input type="hidden" name="id">
+      <div class="form-grid">
+        <div class="full">
+          <label for="m_name">Item name</label>
+          <input id="m_name" name="name" required placeholder="Paracetamol 500mg">
+        </div>
+        <div>
+          <label for="m_centre">Health centre</label>
+          <select id="m_centre" name="centreId" required></select>
+        </div>
+        <div>
+          <label for="m_cat">Category</label>
+          <select id="m_cat" name="category">
+            <option>Medicine</option>
+            <option>Supply</option>
+          </select>
+        </div>
+        <div>
+          <label for="m_qty">Quantity in stock</label>
+          <input id="m_qty" name="quantity" type="number" min="0" value="0">
+        </div>
+        <div>
+          <label for="m_min">Minimum level</label>
+          <input id="m_min" name="minLevel" type="number" min="0" value="10">
+        </div>
+        <div>
+          <label for="m_unit">Unit</label>
+          <input id="m_unit" name="unit" placeholder="tablets, strips, bottles">
+        </div>
+        <div>
+          <label for="m_exp">Expiry date</label>
+          <input id="m_exp" name="expiryDate" type="date">
+        </div>
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn" onclick="closeDlg('medDlg')">Cancel</button>
+      <button type="submit" class="btn primary">Save item</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- give medicine to a resident -->
+<dialog id="issueDlg">
+  <form id="issueForm" onsubmit="saveIssue(event)">
+    <div class="dlg-head">
+      <h3 id="issueTitle">Give out</h3>
+      <button type="button" class="dlg-close" onclick="closeDlg('issueDlg')" aria-label="Close">&times;</button>
+    </div>
+    <div class="dlg-body">
+      <div class="form-grid">
+        <div class="full">
+          <label for="i_resident">Given to</label>
+          <select id="i_resident" name="residentId"></select>
+        </div>
+        <div>
+          <label for="i_qty">Quantity</label>
+          <input id="i_qty" name="quantity" type="number" min="1" required>
+        </div>
+        <div>
+          <label for="i_by">Given by</label>
+          <input id="i_by" name="issuedBy">
+        </div>
+      </div>
+      <p class="sub" id="issueHint"></p>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn" onclick="closeDlg('issueDlg')">Cancel</button>
+      <button type="submit" class="btn primary">Give out</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- request a refill -->
+<dialog id="refillDlg">
+  <form id="refillForm" onsubmit="saveRefill(event)">
+    <div class="dlg-head">
+      <h3 id="refillTitle">Request refill</h3>
+      <button type="button" class="dlg-close" onclick="closeDlg('refillDlg')" aria-label="Close">&times;</button>
+    </div>
+    <div class="dlg-body">
+      <div class="form-grid">
+        <div>
+          <label for="q_qty">Quantity needed</label>
+          <input id="q_qty" name="quantityNeeded" type="number" min="1" required>
+        </div>
+        <div>
+          <label for="q_by">Requested by</label>
+          <input id="q_by" name="requestedBy">
+        </div>
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn" onclick="closeDlg('refillDlg')">Cancel</button>
+      <button type="submit" class="btn primary">Send request</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="js/api.js"></script>
+<script>
+renderNav("medicines");
+
+let medicines = [];
+let centres = [];
+let residents = [];
+let target = null;
+
+const medForm = document.getElementById("medForm");
+const issueForm = document.getElementById("issueForm");
+const refillForm = document.getElementById("refillForm");
+
+function centreName(id) {
+  const c = centres.find((x) => x.id === id);
+  return c ? c.name : "Centre " + id;
+}
+
+function residentName(id) {
+  if (id == null) return "Not recorded";
+  const r = residents.find((x) => x.id === id);
+  return r ? r.name : "Resident " + id;
+}
+
+const isLow = (m) => m.quantity < m.minLevel;
+const isExpired = (m) => m.expiryDate && m.expiryDate < today();
+
+async function init() {
+  try { centres = await http.get(API.centre + "/centres"); } catch (e) { showError(e); }
+  try { residents = await http.get(API.resident + "/residents"); } catch (e) { showError(e); }
+  fillSelect(document.getElementById("centreFilter"), centres, (c) => c.id, (c) => c.name, "All health centres");
+  loadAll();
+}
+
+function loadAll() {
+  loadStock();
+  loadRefills();
+  loadIssues();
+}
+
+// ----- stock -----
+
+async function loadStock() {
+  try {
+    medicines = await http.get(API.inventory + "/medicines");
+  } catch (e) {
+    document.getElementById("stockRows").innerHTML = '<tr><td colspan="8" class="empty">' + esc(e.message) + "</td></tr>";
+    return;
+  }
+  renderStock();
+}
+
+function renderStock() {
+  const centre = document.getElementById("centreFilter").value;
+  const lowOnly = document.getElementById("lowOnly").checked;
+  const list = medicines.filter((m) =>
+    (!centre || String(m.centreId) === centre) && (!lowOnly || isLow(m)));
+
+  const body = document.getElementById("stockRows");
+  if (!list.length) {
+    body.innerHTML = '<tr><td colspan="8" class="empty">No items found.</td></tr>';
+    return;
+  }
+  body.innerHTML = list.map((m) =>
+    '<tr class="' + (isLow(m) ? "is-low" : "") + '">' +
+      "<td><strong>" + esc(m.name) + "</strong></td>" +
+      "<td>" + esc(centreName(m.centreId)) + "</td>" +
+      "<td>" + esc(m.category) + "</td>" +
+      '<td class="num">' + m.quantity + (m.unit ? ' <span class="sub" style="display:inline">' + esc(m.unit) + "</span>" : "") + "</td>" +
+      '<td class="num">' + m.minLevel + "</td>" +
+      "<td>" + fmtDate(m.expiryDate) + "</td>" +
+      "<td>" + (isExpired(m) ? badge("EXPIRED") : isLow(m) ? badge("LOW STOCK") : badge("OK")) + "</td>" +
+      '<td><div class="actions">' +
+        '<button class="btn sm" onclick="giveOut(' + m.id + ')">Give out</button>' +
+        '<button class="btn sm" onclick="askRefill(' + m.id + ')">Request refill</button>' +
+        '<button class="btn sm" onclick="editMedicine(' + m.id + ')">Edit</button>' +
+      "</div></td>" +
+    "</tr>"
+  ).join("");
+}
+
+function addMedicine() {
+  medForm.reset();
+  medForm.elements.id.value = "";
+  fillSelect(document.getElementById("m_centre"), centres, (c) => c.id, (c) => c.name, "Choose a health centre");
+  document.getElementById("medTitle").textContent = "Add item";
+  openDlg("medDlg");
+}
+
+function editMedicine(id) {
+  const m = medicines.find((x) => x.id === id);
+  medForm.reset();
+  fillSelect(document.getElementById("m_centre"), centres, (c) => c.id, (c) => c.name, "Choose a health centre");
+  medForm.elements.id.value = m.id;
+  medForm.elements.name.value = m.name;
+  medForm.elements.centreId.value = m.centreId;
+  medForm.elements.category.value = m.category || "Medicine";
+  medForm.elements.quantity.value = m.quantity;
+  medForm.elements.minLevel.value = m.minLevel;
+  medForm.elements.unit.value = m.unit || "";
+  medForm.elements.expiryDate.value = m.expiryDate || "";
+  document.getElementById("medTitle").textContent = "Edit item";
+  openDlg("medDlg");
+}
+
+async function saveMedicine(e) {
+  e.preventDefault();
+  const data = formData(medForm);
+  const id = data.id;
+  delete data.id;
+  try {
+    if (id) await http.put(API.inventory + "/medicines/" + id, data);
+    else await http.post(API.inventory + "/medicines", data);
+    closeDlg("medDlg");
+    toast("Item saved.");
+    loadStock();
+  } catch (err) { showError(err); }
+}
+
+// ----- giving medicine out -----
+
+function giveOut(id) {
+  target = medicines.find((x) => x.id === id);
+  issueForm.reset();
+  fillSelect(document.getElementById("i_resident"), residents, (r) => r.id,
+    (r) => r.name + (r.village ? " (" + r.village + ")" : ""), "Not recorded");
+  document.getElementById("issueTitle").textContent = "Give out: " + target.name;
+  document.getElementById("issueHint").textContent =
+    target.quantity + " " + (target.unit || "units") + " available at " + centreName(target.centreId) + ".";
+  openDlg("issueDlg");
+}
+
+async function saveIssue(e) {
+  e.preventDefault();
+  try {
+    await http.post(API.inventory + "/medicines/" + target.id + "/issue", formData(issueForm));
+    closeDlg("issueDlg");
+    toast("Recorded. Stock updated.");
+    loadStock();
+    loadIssues();
+  } catch (err) { showError(err); }
+}
+
+async function loadIssues() {
+  const body = document.getElementById("issueRows");
+  try {
+    const list = await http.get(API.inventory + "/medicines/issues/recent");
+    if (!list.length) {
+      body.innerHTML = '<tr><td colspan="4" class="empty">Nothing has been given out yet.</td></tr>';
+      return;
+    }
+    body.innerHTML = list.map((i) =>
+      "<tr><td>" + fmtDate(i.issueDate) + "</td><td>" + esc(i.medicineName) + '</td><td class="num">' + i.quantity +
+      "</td><td>" + esc(residentName(i.residentId)) + (i.issuedBy ? '<span class="sub">by ' + esc(i.issuedBy) + "</span>" : "") + "</td></tr>"
+    ).join("");
+  } catch (err) {
+    body.innerHTML = '<tr><td colspan="4" class="empty">' + esc(err.message) + "</td></tr>";
+  }
+}
+
+// ----- refill requests -----
+
+function askRefill(id) {
+  target = medicines.find((x) => x.id === id);
+  refillForm.reset();
+  document.getElementById("refillTitle").textContent = "Request refill: " + target.name;
+  openDlg("refillDlg");
+}
+
+async function saveRefill(e) {
+  e.preventDefault();
+  const data = formData(refillForm);
+  data.medicineId = target.id;
+  try {
+    await http.post(API.inventory + "/replenishments", data);
+    closeDlg("refillDlg");
+    toast("Refill request sent.");
+    loadRefills();
+  } catch (err) { showError(err); }
+}
+
+async function loadRefills() {
+  const body = document.getElementById("refillRows");
+  try {
+    const list = await http.get(API.inventory + "/replenishments");
+    if (!list.length) {
+      body.innerHTML = '<tr><td colspan="4" class="empty">No refill requests.</td></tr>';
+      return;
+    }
+    body.innerHTML = list.map((r) =>
+      "<tr><td><strong>" + esc(r.medicineName) + '</strong><span class="sub">' + esc(centreName(r.centreId)) + ", asked " + fmtDate(r.requestedOn) + "</span></td>" +
+      '<td class="num">' + r.quantityNeeded + "</td><td>" + badge(r.status) + "</td>" +
+      '<td><div class="actions">' +
+        (r.status === "PENDING" ? '<button class="btn sm" onclick="setRefill(' + r.id + ", 'APPROVED')\">Approve</button>" : "") +
+        (r.status !== "DELIVERED" ? '<button class="btn sm" onclick="setRefill(' + r.id + ", 'DELIVERED')\">Mark delivered</button>" : "") +
+      "</div></td></tr>"
+    ).join("");
+  } catch (err) {
+    body.innerHTML = '<tr><td colspan="4" class="empty">' + esc(err.message) + "</td></tr>";
+  }
+}
+
+async function setRefill(id, status) {
+  try {
+    await http.put(API.inventory + "/replenishments/" + id + "/status", { status: status });
+    toast(status === "DELIVERED" ? "Marked as delivered. Stock updated." : "Request approved.");
+    loadStock();
+    loadRefills();
+  } catch (err) { showError(err); }
+}
+
+init();
+</script>
+</body>
+</html>

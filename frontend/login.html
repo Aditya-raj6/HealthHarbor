@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in - HealthHarbor</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="login-page">
+<form class="login-card" id="loginForm">
+  <h1>HealthHarbor</h1>
+  <p class="tagline">Integrated rural health and sanitation management.</p>
+
+  <fieldset class="role-list" id="roleList"></fieldset>
+
+  <button class="btn primary" type="submit">Continue to dashboard</button>
+
+  <p class="login-note">
+    Demonstration mode: choosing a role only decides which pages and buttons you see.
+    It does not check a password, so it is not real security. A live deployment would sit behind
+    a proper sign-in system with access control on every service.
+  </p>
+</form>
+
+<script src="js/api.js"></script>
+<script>
+// build the role choices from the ROLES table in js/api.js
+const list = document.getElementById("roleList");
+Object.keys(ROLES).forEach((key, i) => {
+  list.innerHTML +=
+    '<label class="role-option"><input type="radio" name="role" value="' + key + '"' + (i === 0 ? " checked" : "") + ">" +
+    "<div><strong>" + esc(ROLES[key].label) + "</strong><span>" + esc(ROLES[key].info) + "</span></div></label>";
+});
+
+document.getElementById("loginForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  setRole(new FormData(e.target).get("role"));
+  location.href = "index.html";
+});
+</script>
+</body>
+</html>

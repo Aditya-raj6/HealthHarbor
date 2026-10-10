@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Appointments - HealthHarbor</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="nav"></aside>
+
+  <main class="main">
+    <header class="page-head">
+      <div>
+        <h1>Appointments</h1>
+        <p>Book appointments and record what happened in each consultation.</p>
+      </div>
+      <div class="head-actions">
+        <button class="btn primary" onclick="addAppointment()">Book appointment</button>
+      </div>
+    </header>
+
+    <section class="panel">
+      <div class="panel-body">
+        <div class="toolbar" style="margin-bottom:0">
+          <select id="statusFilter" onchange="load()" aria-label="Filter by status">
+            <option value="">All appointments</option>
+            <option value="SCHEDULED">Scheduled</option>
+            <option value="COMPLETED">Completed</option>
+            <option value="CANCELLED">Cancelled</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>When</th><th>Resident</th><th>Health centre</th><th>Reason</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- book an appointment -->
+<dialog id="apptDlg">
+  <form id="apptForm" onsubmit="saveAppointment(event)">
+    <div class="dlg-head">
+      <h3>Book appointment</h3>
+      <button type="button" class="dlg-close" onclick="closeDlg('apptDlg')" aria-label="Close">&times;</button>
+    </div>
+    <div class="dlg-body">
+      <div class="form-grid">
+        <div class="full">
+          <label for="a_resident">Resident</label>
+          <select id="a_resident" name="residentId" required></select>
+        </div>
+        <div>
+          <label for="a_centre">Health centre</label>
+          <select id="a_centre" name="centreId" required onchange="loadWorkers()"></select>
+        </div>
+        <div>
+          <label for="a_worker">Doctor or worker</label>
+          <select id="a_worker" name="workerId"></select>
+        </div>
+        <div>
+          <label for="a_date">Date</label>
+          <input id="a_date" name="appointmentDate" type="date" required>
+        </div>
+        <div>
+          <label for="a_time">Time</label>
+          <input id="a_time" name="appointmentTime" type="time">
+        </div>
+        <div class="full">
+          <label for="a_reason">Reason for visit</label>
+          <textarea id="a_reason" name="reason"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn" onclick="closeDlg('apptDlg')">Cancel</button>
+      <button type="submit" class="btn primary">Book appointment</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- consultation -->
+<dialog id="consultDlg" class="wide">
+  <div class="dlg-head">
+    <h3 id="consultTitle">Consultation</h3>
+    <button type="button" class="dlg-close" onclick="closeDlg('consultDlg')" aria-label="Close">&times;</button>
+  </div>
+  <div class="dlg-body">
+    <h4>Consultations so far</h4>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Symptoms</th><th>Diagnosis</th><th>Treatment</th></tr></thead>
+        <tbody id="consultRows"></tbody>
+      </table>
+    </div>
+
+    <form class="inline-form" id="consultForm" onsubmit="saveConsultation(event)">
+      <h4>Record a consultation</h4>
+      <div class="form-grid">
+        <div class="full">
+          <label for="k_symptoms">Symptoms</label>
+          <input id="k_symptoms" name="symptoms">
+        </div>
+        <div>
+          <label for="k_diag">Diagnosis</label>
+          <input id="k_diag" name="diagnosis" required>
+        </div>
+        <div>
+          <label for="k_treat">Treatment</label>
+          <input id="k_treat" name="treatment">
+        </div>
+      </div>
+      <p class="sub">Saving marks the appointment as completed and adds a line to the resident's visit history.</p>
+      <p><button class="btn primary" type="submit">Save consultation</button></p>
+    </form>
+  </div>
+</dialog>
+
+<script src="js/api.js"></script>
+<script>
+renderNav("appointments");
+
+let appointments = [];
+let residents = [];
+let centres = [];
+let current = null;
+
+const rows = document.getElementById("rows");
+const apptForm = document.getElementById("apptForm");
+const consultForm = document.getElementById("consultForm");
+
+function residentName(id) {
+  const r = residents.find((x) => x.id === id);
+  return r ? r.name : "Resident " + id;
+}
+
+async function init() {
+  // The resident names come from the resident service, the centres from the health centre service.
+  try { residents = await http.get(API.resident + "/residents"); } catch (e) { showError(e); }
+  try { centres = await http.get(API.centre + "/centres"); } catch (e) { showError(e); }
+  load();
+}
+
+async function load() {
+  const status = document.getElementById("statusFilter").value;
+  try {
+    appointments = await http.get(API.centre + "/appointments" + (status ? "?status=" + status : ""));
+  } catch (e) {
+    rows.innerHTML = '<tr><td colspan="6" class="empty">' + esc(e.message) + "</td></tr>";
+    return;
+  }
+  if (!appointments.length) {
+    rows.innerHTML = '<tr><td colspan="6" class="empty">No appointments found. Book the first one.</td></tr>';
+    return;
+  }
+  rows.innerHTML = appointments.map((a) =>
+    "<tr>" +
+      "<td><strong>" + fmtDate(a.appointmentDate) + '</strong><span class="sub">' + fmtTime(a.appointmentTime) + "</span></td>" +
+      "<td>" + esc(residentName(a.residentId)) + "</td>" +
+      "<td>" + esc(a.centreName) + '<span class="sub">' + esc(a.workerName || "Any available worker") + "</span></td>" +
+      "<td>" + esc(a.reason) + "</td>" +
+      "<td>" + badge(a.status) + "</td>" +
+      '<td><div class="actions">' +
+        '<button class="btn sm" onclick="showConsultation(' + a.id + ')">Consultation</button>' +
+        (a.status === "SCHEDULED" ? '<button class="btn sm danger" onclick="cancelAppointment(' + a.id + ')">Cancel</button>' : "") +
+      "</div></td>" +
+    "</tr>"
+  ).join("");
+}
+
+// ----- booking -----
+
+function addAppointment() {
+  apptForm.reset();
+  fillSelect(document.getElementById("a_resident"), residents, (r) => r.id,
+    (r) => r.name + (r.village ? " (" + r.village + ")" : ""), "Choose a resident");
+  fillSelect(document.getElementById("a_centre"), centres, (c) => c.id, (c) => c.name, "Choose a health centre");
+  fillSelect(document.getElementById("a_worker"), [], (w) => w.id, (w) => w.name, "Choose a centre first");
+  document.getElementById("a_date").min = today();
+  document.getElementById("a_date").value = today();
+  openDlg("apptDlg");
+}
+
+async function loadWorkers() {
+  const centreId = document.getElementById("a_centre").value;
+  const select = document.getElementById("a_worker");
+  if (!centreId) {
+    fillSelect(select, [], (w) => w.id, (w) => w.name, "Choose a centre first");
+    return;
+  }
+  try {
+    const workers = await http.get(API.centre + "/centres/" + centreId + "/workers");
+    fillSelect(select, workers, (w) => w.id, (w) => w.name + " (" + w.role + ")", "Any available worker");
+  } catch (e) { showError(e); }
+}
+
+async function saveAppointment(e) {
+  e.preventDefault();
+  try {
+    await http.post(API.centre + "/appointments", formData(apptForm));
+    closeDlg("apptDlg");
+    toast("Appointment booked.");
+    load();
+  } catch (err) { showError(err); }
+}
+
+async function cancelAppointment(id) {
+  if (!confirm("Cancel this appointment?")) return;
+  try {
+    await http.put(API.centre + "/appointments/" + id + "/status", { status: "CANCELLED" });
+    toast("Appointment cancelled.");
+    load();
+  } catch (err) { showError(err); }
+}
+
+// ----- consultation -----
+
+async function showConsultation(id) {
+  current = appointments.find((x) => x.id === id);
+  document.getElementById("consultTitle").textContent =
+    "Consultation: " + residentName(current.residentId) + ", " + fmtDate(current.appointmentDate);
+  consultForm.reset();
+  await loadConsultations();
+  openDlg("consultDlg");
+}
+
+async function loadConsultations() {
+  const body = document.getElementById("consultRows");
+  try {
+    const list = await http.get(API.centre + "/appointments/" + current.id + "/consultations");
+    if (!list.length) {
+      body.innerHTML = '<tr><td colspan="4" class="empty">Nothing recorded for this appointment yet.</td></tr>';
+      return;
+    }
+    body.innerHTML = list.map((c) =>
+      "<tr><td>" + fmtDate(c.consultDate) + "</td><td>" + esc(c.symptoms) + "</td><td>" + esc(c.diagnosis) +
+      "</td><td>" + esc(c.treatment) + "</td></tr>"
+    ).join("");
+  } catch (err) {
+    body.innerHTML = '<tr><td colspan="4" class="empty">' + esc(err.message) + "</td></tr>";
+  }
+}
+
+async function saveConsultation(e) {
+  e.preventDefault();
+  const data = formData(consultForm);
+  try {
+    await http.post(API.centre + "/appointments/" + current.id + "/consultations", data);
+  } catch (err) { showError(err); return; }
+
+  // Also add this visit to the resident's history (a different service)
+  try {
+    await http.post(API.resident + "/residents/" + current.residentId + "/visits", {
+      healthCentreId: current.centreId,
+      visitDate: today(),
+      reason: current.reason,
+      diagnosis: data.diagnosis,
+      treatment: data.treatment,
+    });
+    toast("Consultation saved and added to the visit history.");
+  } catch (err) {
+    toast("Consultation saved, but the visit history could not be updated: " + err.message, "err");
+  }
+  consultForm.reset();
+  await loadConsultations();
+  load();
+}
+
+init();
+</script>
+</body>
+</html>

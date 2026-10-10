@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sanitation - HealthHarbor</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="nav"></aside>
+
+  <main class="main">
+    <header class="page-head">
+      <div>
+        <h1>Sanitation</h1>
+        <p>Public toilets, handpumps and drains: their condition, complaints and maintenance history.</p>
+      </div>
+      <div class="head-actions">
+        <button class="btn" onclick="addFacility()">Add facility</button>
+        <button class="btn primary" onclick="addComplaint()">Report a problem</button>
+      </div>
+    </header>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Complaints</h2>
+        <select id="complaintFilter" onchange="loadComplaints()" aria-label="Filter complaints" style="width:auto">
+          <option value="OPEN">Not resolved yet</option>
+          <option value="">All complaints</option>
+          <option value="PENDING">Waiting</option>
+          <option value="IN_PROGRESS">In progress</option>
+          <option value="RESOLVED">Resolved</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Problem</th><th>Priority</th><th>Reported</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody id="complaintRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Facilities</h2></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Facility</th><th>Village</th><th>Cleanliness</th><th>Last maintenance</th><th></th></tr>
+          </thead>
+          <tbody id="facilityRows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- report a problem -->
+<dialog id="complaintDlg">
+  <form id="complaintForm" onsubmit="saveComplaint(event)">
+    <div class="dlg-head">
+      <h3>Report a problem</h3>
+      <button type="button" class="dlg-close" onclick="closeDlg('complaintDlg')" aria-label="Close">&times;</button>
+    </div>
+    <div class="dlg-body">
+      <div class="form-grid">
+        <div class="full">
+          <label for="c_facility">Facility</label>
+          <select id="c_facility" name="facilityId" required></select>
+        </div>
+        <div class="full">
+          <label for="c_desc">What is wrong?</label>
+          <textarea id="c_desc" name="description" required></textarea>
+        </div>
+        <div>
+          <label for="c_priority">Priority</label>
+          <select id="c_priority" name="priority">
+            <option value="HIGH">High</option>
+            <option value="MEDIUM" selected>Medium</option>
+            <option value="LOW">Low</option>
+          </select>
+        </div>
+        <div>
+          <label for="c_by">Reported by</label>
+          <input id="c_by" name="reportedBy">
+        </div>
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn" onclick="closeDlg('complaintDlg')">Cancel</button>
+      <button type="submit" class="btn primary">Send report</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- add / edit facility -->
+<dialog id="facilityDlg">
+  <form id="facilityForm" onsubmit="saveFacility(event)">
+    <div class="dlg-head">
+      <h3 id="facilityTitle">Add facility</h3>
+      <button type="button" class="dlg-close" onclick="closeDlg('facilityDlg')" aria-label="Close">&times;</button>
+    </div>
+    <div class="dlg-body">
+      <input type="hidden" name="id">
+      <div class="form-grid">
+        <div class="full">
+          <label for="f_name">Facility name</label>
+          <input id="f_name" name="name" required>
+        </div>
+        <div>
+          <label for="f_type">Type</label>
+          <select id="f_type" name="type">
+            <option>Public toilet</option>
+            <option>Handpump</option>
+            <option>Drain</option>
+            <option>Water tank</option>
+            <option>Garbage point</option>
+            <option>Community bathing area</option>
+          </select>
+        </div>
+        <div>
+          <label for="f_village">Village</label>
+          <input id="f_village" name="village">
+        </div>
+        <div>
+          <label for="f_clean">Cleanliness</label>
+          <select id="f_clean" name="cleanlinessStatus">
+            <option value="GOOD">Good</option>
+            <option value="AVERAGE">Average</option>
+            <option value="POOR">Poor</option>
+          </select>
+        </div>
+        <div>
+          <label for="f_last">Last maintenance</label>
+          <input id="f_last" name="lastMaintenance" type="date">
+        </div>
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn" onclick="closeDlg('facilityDlg')">Cancel</button>
+      <button type="submit" class="btn primary">Save facility</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- maintenance history -->
+<dialog id="historyDlg">
+  <div class="dlg-head">
+    <h3 id="historyTitle">Maintenance history</h3>
+    <button type="button" class="dlg-close" onclick="closeDlg('historyDlg')" aria-label="Close">&times;</button>
+  </div>
+  <div class="dlg-body">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Work done</th><th>Done by</th></tr></thead>
+        <tbody id="historyRows"></tbody>
+      </table>
+    </div>
+  </div>
+</dialog>
+
+<script src="js/api.js"></script>
+<script>
+renderNav("sanitation");
+
+let facilities = [];
+const complaintForm = document.getElementById("complaintForm");
+const facilityForm = document.getElementById("facilityForm");
+
+async function init() {
+  await loadFacilities();
+  loadComplaints();
+}
+
+// ----- complaints -----
+
+async function loadComplaints() {
+  const status = document.getElementById("complaintFilter").value;
+  const body = document.getElementById("complaintRows");
+  try {
+    const list = await http.get(API.sanitation + "/complaints" + (status ? "?status=" + status : ""));
+    if (!list.length) {
+      body.innerHTML = '<tr><td colspan="5" class="empty">No complaints here. Use "Report a problem" to add one.</td></tr>';
+      return;
+    }
+    body.innerHTML = list.map((c) =>
+      "<tr>" +
+        "<td><strong>" + esc(c.description) + '</strong><span class="sub">' + esc(c.facilityName) + ", " + esc(c.village) + "</span></td>" +
+        "<td>" + badge(c.priority) + "</td>" +
+        "<td>" + fmtDate(c.reportedOn) + (c.reportedBy ? '<span class="sub">by ' + esc(c.reportedBy) + "</span>" : "") + "</td>" +
+        "<td>" + badge(c.status) + "</td>" +
+        '<td><div class="actions">' +
+          (c.status === "PENDING" ? '<button class="btn sm" onclick="startWork(' + c.id + ')">Start work</button>' : "") +
+          (c.status !== "RESOLVED" ? '<button class="btn sm primary" onclick="resolve(' + c.id + ')">Resolve</button>' : "") +
+        "</div></td>" +
+      "</tr>"
+    ).join("");
+  } catch (err) {
+    body.innerHTML = '<tr><td colspan="5" class="empty">' + esc(err.message) + "</td></tr>";
+  }
+}
+
+function addComplaint() {
+  complaintForm.reset();
+  fillSelect(document.getElementById("c_facility"), facilities, (f) => f.id,
+    (f) => f.name + " (" + f.village + ")", "Choose a facility");
+  openDlg("complaintDlg");
+}
+
+async function saveComplaint(e) {
+  e.preventDefault();
+  try {
+    await http.post(API.sanitation + "/complaints", formData(complaintForm));
+    closeDlg("complaintDlg");
+    toast("Problem recorded.");
+    loadComplaints();
+  } catch (err) { showError(err); }
+}
+
+async function startWork(id) {
+  try {
+    await http.put(API.sanitation + "/complaints/" + id + "/status", { status: "IN_PROGRESS" });
+    toast("Marked as in progress.");
+    loadComplaints();
+  } catch (err) { showError(err); }
+}
+
+async function resolve(id) {
+  const note = prompt("What was done to fix it? This goes into the maintenance history.");
+  if (note === null) return;
+  try {
+    await http.put(API.sanitation + "/complaints/" + id + "/status",
+      { status: "RESOLVED", note: note, doneBy: "Sanitation team" });
+    toast("Resolved. The facility's maintenance history is updated.");
+    loadComplaints();
+    loadFacilities();
+  } catch (err) { showError(err); }
+}
+
+// ----- facilities -----
+
+async function loadFacilities() {
+  const body = document.getElementById("facilityRows");
+  try {
+    facilities = await http.get(API.sanitation + "/facilities");
+  } catch (err) {
+    body.innerHTML = '<tr><td colspan="5" class="empty">' + esc(err.message) + "</td></tr>";
+    return;
+  }
+  if (!facilities.length) {
+    body.innerHTML = '<tr><td colspan="5" class="empty">No facilities yet. Add the first one.</td></tr>';
+    return;
+  }
+  body.innerHTML = facilities.map((f) =>
+    "<tr>" +
+      "<td><strong>" + esc(f.name) + '</strong><span class="sub">' + esc(f.type) + "</span></td>" +
+      "<td>" + esc(f.village) + "</td>" +
+      "<td>" + badge(f.cleanlinessStatus) + "</td>" +
+      "<td>" + fmtDate(f.lastMaintenance) + "</td>" +
+      '<td><div class="actions">' +
+        '<button class="btn sm" onclick="showHistory(' + f.id + ')">History</button>' +
+        '<button class="btn sm" onclick="editFacility(' + f.id + ')">Edit</button>' +
+      "</div></td>" +
+    "</tr>"
+  ).join("");
+}
+
+function addFacility() {
+  facilityForm.reset();
+  facilityForm.elements.id.value = "";
+  document.getElementById("facilityTitle").textContent = "Add facility";
+  openDlg("facilityDlg");
+}
+
+function editFacility(id) {
+  const f = facilities.find((x) => x.id === id);
+  facilityForm.reset();
+  facilityForm.elements.id.value = f.id;
+  facilityForm.elements.name.value = f.name;
+  facilityForm.elements.type.value = f.type || "Public toilet";
+  facilityForm.elements.village.value = f.village || "";
+  facilityForm.elements.cleanlinessStatus.value = f.cleanlinessStatus || "GOOD";
+  facilityForm.elements.lastMaintenance.value = f.lastMaintenance || "";
+  document.getElementById("facilityTitle").textContent = "Edit facility";
+  openDlg("facilityDlg");
+}
+
+async function saveFacility(e) {
+  e.preventDefault();
+  const data = formData(facilityForm);
+  const id = data.id;
+  delete data.id;
+  try {
+    if (id) await http.put(API.sanitation + "/facilities/" + id, data);
+    else await http.post(API.sanitation + "/facilities", data);
+    closeDlg("facilityDlg");
+    toast("Facility saved.");
+    loadFacilities();
+  } catch (err) { showError(err); }
+}
+
+async function showHistory(id) {
+  const f = facilities.find((x) => x.id === id);
+  document.getElementById("historyTitle").textContent = "Maintenance history: " + f.name;
+  const body = document.getElementById("historyRows");
+  try {
+    const list = await http.get(API.sanitation + "/facilities/" + id + "/maintenance");
+    body.innerHTML = list.length
+      ? list.map((m) => "<tr><td>" + fmtDate(m.doneOn) + "</td><td>" + esc(m.activity) + "</td><td>" + esc(m.doneBy) + "</td></tr>").join("")
+      : '<tr><td colspan="3" class="empty">No maintenance has been recorded for this facility.</td></tr>';
+  } catch (err) {
+    body.innerHTML = '<tr><td colspan="3" class="empty">' + esc(err.message) + "</td></tr>";
+  }
+  openDlg("historyDlg");
+}
+
+init();
+</script>
+</body>
+</html>

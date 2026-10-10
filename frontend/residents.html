@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Residents - HealthHarbor</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="nav"></aside>
+
+  <main class="main">
+    <header class="page-head">
+      <div>
+        <h1>Residents</h1>
+        <p>Resident profiles, basic medical information and visit history.</p>
+      </div>
+      <div class="head-actions">
+        <button class="btn primary" onclick="addResident()">Add resident</button>
+      </div>
+    </header>
+
+    <section class="panel">
+      <div class="panel-body">
+        <div class="toolbar" style="margin-bottom:0">
+          <input type="search" id="search" placeholder="Search by name or phone" oninput="render()" aria-label="Search residents">
+          <select id="villageFilter" onchange="render()" aria-label="Filter by village"></select>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th><th>Age and gender</th><th>Village</th><th>Phone</th>
+              <th>Blood group</th><th>Medical notes</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- add / edit resident -->
+<dialog id="residentDlg">
+  <form id="residentForm" onsubmit="saveResident(event)">
+    <div class="dlg-head">
+      <h3 id="residentTitle">Add resident</h3>
+      <button type="button" class="dlg-close" onclick="closeDlg('residentDlg')" aria-label="Close">&times;</button>
+    </div>
+    <div class="dlg-body">
+      <input type="hidden" name="id">
+      <div class="form-grid">
+        <div class="full">
+          <label for="f_name">Full name</label>
+          <input id="f_name" name="name" required>
+        </div>
+        <div>
+          <label for="f_age">Age</label>
+          <input id="f_age" name="age" type="number" min="0" max="120">
+        </div>
+        <div>
+          <label for="f_gender">Gender</label>
+          <select id="f_gender" name="gender">
+            <option value="">Not stated</option>
+            <option>Male</option>
+            <option>Female</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div>
+          <label for="f_village">Village</label>
+          <input id="f_village" name="village">
+        </div>
+        <div>
+          <label for="f_phone">Phone</label>
+          <input id="f_phone" name="phone" inputmode="tel">
+        </div>
+        <div>
+          <label for="f_blood">Blood group</label>
+          <select id="f_blood" name="bloodGroup">
+            <option value="">Not known</option>
+            <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
+            <option>AB+</option><option>AB-</option><option>O+</option><option>O-</option>
+          </select>
+        </div>
+        <div class="full">
+          <label for="f_notes">Medical notes</label>
+          <textarea id="f_notes" name="medicalNotes" placeholder="Allergies, long-term conditions, anything the next nurse should know"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn" onclick="closeDlg('residentDlg')">Cancel</button>
+      <button type="submit" class="btn primary">Save resident</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- visit history -->
+<dialog id="visitsDlg" class="wide">
+  <div class="dlg-head">
+    <h3 id="visitsTitle">Visits</h3>
+    <button type="button" class="dlg-close" onclick="closeDlg('visitsDlg')" aria-label="Close">&times;</button>
+  </div>
+  <div class="dlg-body">
+    <h4>Visit history</h4>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Health centre</th><th>Reason</th><th>Diagnosis</th><th>Treatment</th></tr></thead>
+        <tbody id="visitRows"></tbody>
+      </table>
+    </div>
+
+    <form class="inline-form" id="visitForm" onsubmit="saveVisit(event)">
+      <h4>Record a visit</h4>
+      <div class="form-grid">
+        <div>
+          <label for="v_date">Date</label>
+          <input id="v_date" name="visitDate" type="date" required>
+        </div>
+        <div>
+          <label for="v_centre">Health centre</label>
+          <select id="v_centre" name="healthCentreId"></select>
+        </div>
+        <div class="full">
+          <label for="v_reason">Reason for visit</label>
+          <input id="v_reason" name="reason">
+        </div>
+        <div>
+          <label for="v_diag">Diagnosis</label>
+          <input id="v_diag" name="diagnosis">
+        </div>
+        <div>
+          <label for="v_treat">Treatment</label>
+          <input id="v_treat" name="treatment">
+        </div>
+      </div>
+      <p><button class="btn primary" type="submit">Save visit</button></p>
+    </form>
+  </div>
+</dialog>
+
+<script src="js/api.js"></script>
+<script>
+renderNav("residents");
+
+let residents = [];
+let centres = [];
+let current = null;
+
+const rows = document.getElementById("rows");
+const form = document.getElementById("residentForm");
+const visitForm = document.getElementById("visitForm");
+
+function centreName(id) {
+  const c = centres.find((x) => x.id === id);
+  return c ? c.name : (id ? "Centre " + id : "-");
+}
+
+async function load() {
+  try {
+    residents = await http.get(API.resident + "/residents");
+  } catch (e) {
+    rows.innerHTML = '<tr><td colspan="7" class="empty">' + esc(e.message) + "</td></tr>";
+    return;
+  }
+  const villageFilter = document.getElementById("villageFilter");
+  const keep = villageFilter.value;
+  const villages = [...new Set(residents.map((r) => r.village).filter(Boolean))].sort();
+  fillSelect(villageFilter, villages, (v) => v, (v) => v, "All villages");
+  villageFilter.value = keep;
+  render();
+}
+
+function render() {
+  const q = document.getElementById("search").value.trim().toLowerCase();
+  const village = document.getElementById("villageFilter").value;
+  const list = residents.filter((r) =>
+    (!village || r.village === village) &&
+    (!q || r.name.toLowerCase().includes(q) || (r.phone || "").includes(q)));
+
+  if (!list.length) {
+    rows.innerHTML = '<tr><td colspan="7" class="empty">No residents found. Add a resident or change the search.</td></tr>';
+    return;
+  }
+  rows.innerHTML = list.map((r) =>
+    "<tr>" +
+      "<td><strong>" + esc(r.name) + "</strong></td>" +
+      "<td>" + esc(r.age == null ? "-" : r.age) + (r.gender ? ", " + esc(r.gender) : "") + "</td>" +
+      "<td>" + esc(r.village) + "</td>" +
+      "<td>" + esc(r.phone) + "</td>" +
+      "<td>" + esc(r.bloodGroup) + "</td>" +
+      "<td>" + esc(r.medicalNotes) + "</td>" +
+      '<td><div class="actions">' +
+        '<button class="btn sm" onclick="showVisits(' + r.id + ')">Visits</button>' +
+        '<button class="btn sm" onclick="editResident(' + r.id + ')">Edit</button>' +
+        '<button class="btn sm danger" onclick="removeResident(' + r.id + ')">Delete</button>' +
+      "</div></td>" +
+    "</tr>"
+  ).join("");
+}
+
+function addResident() {
+  form.reset();
+  form.elements.id.value = "";
+  document.getElementById("residentTitle").textContent = "Add resident";
+  openDlg("residentDlg");
+}
+
+function editResident(id) {
+  const r = residents.find((x) => x.id === id);
+  form.reset();
+  form.elements.id.value = r.id;
+  form.elements.name.value = r.name || "";
+  form.elements.age.value = r.age == null ? "" : r.age;
+  form.elements.gender.value = r.gender || "";
+  form.elements.village.value = r.village || "";
+  form.elements.phone.value = r.phone || "";
+  form.elements.bloodGroup.value = r.bloodGroup || "";
+  form.elements.medicalNotes.value = r.medicalNotes || "";
+  document.getElementById("residentTitle").textContent = "Edit resident";
+  openDlg("residentDlg");
+}
+
+async function saveResident(e) {
+  e.preventDefault();
+  const data = formData(form);
+  const id = data.id;
+  delete data.id;
+  try {
+    if (id) await http.put(API.resident + "/residents/" + id, data);
+    else await http.post(API.resident + "/residents", data);
+    closeDlg("residentDlg");
+    toast("Resident saved.");
+    load();
+  } catch (err) { showError(err); }
+}
+
+async function removeResident(id) {
+  if (!confirm("Delete this resident and their visit history? This cannot be undone.")) return;
+  try {
+    await http.del(API.resident + "/residents/" + id);
+    toast("Resident deleted.");
+    load();
+  } catch (err) { showError(err); }
+}
+
+// ----- visit history -----
+
+async function showVisits(id) {
+  current = residents.find((x) => x.id === id);
+  document.getElementById("visitsTitle").textContent = "Visits: " + current.name;
+  if (!centres.length) {
+    try { centres = await http.get(API.centre + "/centres"); } catch (e) { /* centre names will show as numbers */ }
+  }
+  fillSelect(document.getElementById("v_centre"), centres, (c) => c.id, (c) => c.name, "Not recorded");
+  visitForm.reset();
+  visitForm.elements.visitDate.value = today();
+  await loadVisits();
+  openDlg("visitsDlg");
+}
+
+async function loadVisits() {
+  const body = document.getElementById("visitRows");
+  try {
+    const visits = await http.get(API.resident + "/residents/" + current.id + "/visits");
+    if (!visits.length) {
+      body.innerHTML = '<tr><td colspan="5" class="empty">No visits recorded yet.</td></tr>';
+      return;
+    }
+    body.innerHTML = visits.map((v) =>
+      "<tr><td>" + fmtDate(v.visitDate) + "</td><td>" + esc(centreName(v.healthCentreId)) + "</td>" +
+      "<td>" + esc(v.reason) + "</td><td>" + esc(v.diagnosis) + "</td><td>" + esc(v.treatment) + "</td></tr>"
+    ).join("");
+  } catch (err) {
+    body.innerHTML = '<tr><td colspan="5" class="empty">' + esc(err.message) + "</td></tr>";
+  }
+}
+
+async function saveVisit(e) {
+  e.preventDefault();
+  try {
+    await http.post(API.resident + "/residents/" + current.id + "/visits", formData(visitForm));
+    toast("Visit saved.");
+    visitForm.reset();
+    visitForm.elements.visitDate.value = today();
+    loadVisits();
+  } catch (err) { showError(err); }
+}
+
+load();
+</script>
+</body>
+</html>
